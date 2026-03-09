@@ -176,7 +176,7 @@ fn main() -> Result<(), String> {
             let (alpha, c) = inf.get_approximation_params().unwrap();
             println!("log-log regression: slope(alpha) = {:.2}, lg(C) = {:.2}", alpha, c.log10());
             println!("estimated: alpha = {:.2}, C = {:.2}", alpha, c);
-            println!("approximation: lg(f(x)) ~ lg({:.2}) + {:.2}*lg(x)", c, alpha);
+            println!("approximation: lg(f(x)) = lg({:.2}) + {:.2}*lg(x)", c, alpha);
             println!("expected: alpha=1.5, C=3");
             println!("is_infinitesimal_log: {}", inf.is_infinitesimal_log().unwrap());
         }
