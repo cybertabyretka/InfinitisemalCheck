@@ -28,19 +28,19 @@ impl Infinitesimal {
     }
 
     /// Check if the function is infinitesimal as x -> 0 based on sampled values.
-    pub fn is_infinitesimal(&self, x_start: f64, x_end: f64, n: usize, tol: f64, trend_tol: f64,
+    pub fn is_infinitesimal(
+        &self, x_start: f64, x_end: f64, n: usize, tol: f64, trend_tol: f64,
     ) -> Result<bool, String> {
         if !(x_start > x_end && x_end > 0.0) {
             return Err("x_start must be greater than x_end and both must be positive".into());
         }
-        let xs = geometric_sequence(x_start, x_end, n);
-        let ys: Vec<f64> = xs.iter().map(|&x| (self.func)(x)).collect();
+        let (_, ys) = self.build_xy_table(x_start, x_end, n)?;
         let abs_vals: Vec<f64> = ys.iter().map(|y| y.abs()).collect();
-        if abs_vals.len() < 4 {
-            return Ok(false);
+        if abs_vals.len() < 5 {
+            return Err("Not enough points to determine trend".into());
         }
-        // Check last 5 values are below tol
-        let tail = &abs_vals[abs_vals.len() - 5.min(abs_vals.len())..];
+        // Check last 5 values mean is below tol
+        let tail = &abs_vals[abs_vals.len() - 5..];
         let tail_mean = tail.iter().sum::<f64>() / tail.len() as f64;
         if tail_mean > tol {
             return Ok(false);
@@ -79,7 +79,7 @@ impl Infinitesimal {
     
     /// Build log tables for x and f(x), and also return cleaned versions with only valid log values.
     pub fn build_log_table(
-        &mut self, x: &[f64], y: &[f64]
+        &self, x: &[f64], y: &[f64]
     ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
         let mut lxs: Vec<f64> = Vec::new();
         let mut lys: Vec<f64> = Vec::new();
@@ -95,9 +95,6 @@ impl Infinitesimal {
                 lys_clean.push(ly);
             }
         }
-        if lxs_clean.len() < 2 {
-            return Err("Not enough valid points".into());
-        }
         Ok((lxs, lys, lxs_clean, lys_clean))
     }
 
@@ -106,7 +103,7 @@ impl Infinitesimal {
     /// Stores results in the struct.
     pub fn compute_log_log_lin_reg(
         &mut self, lxs_clean: &[f64], lys_clean: &[f64]
-    ) -> Result<(), String> {
+    ) -> Result<(f64, f64), String> {
         if lxs_clean.len() < 2 {
             return Err("Not enough valid points for regression".into());
         }
@@ -126,11 +123,11 @@ impl Infinitesimal {
         let intercept = y_mean - slope * x_mean;
         self.slope = Some(slope);
         self.intercept = Some(intercept);
-        Ok(())
+        Ok((slope, intercept))
     }
 
     /// Get the approximation parameters alpha and C from the computed slope and intercept.
-    pub fn get_log_lin_reg_params(&mut self) -> Result<(f64, f64), String> {
+    pub fn get_log_lin_reg_params(&self) -> Result<(f64, f64), String> {
         if self.slope.is_none() || self.intercept.is_none() {
             return Err("Approximation parameters not computed, please run compute_log_log_approximation first".into());
         }
@@ -172,7 +169,7 @@ fn main() -> Result<(), String> {
 
     // Compute regression and print results
     match inf.compute_log_log_lin_reg(&lxs_clean, &lys_clean) {
-        Ok(()) => {
+        Ok((_, _)) => {
             let (alpha, c) = inf.get_log_lin_reg_params().unwrap();
             println!("log-log regression: slope(alpha) = {:.2}, lg(C) = {:.2}", alpha, c.log10());
             println!("estimated: alpha = {:.2}, C = {:.2}", alpha, c);
