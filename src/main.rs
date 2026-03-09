@@ -1,15 +1,6 @@
 pub struct Infinitesimal {
     func: Box<dyn Fn(f64) -> f64>,
 
-    pub x: Vec<f64>,
-    pub y: Vec<f64>,
-
-    pub lx: Vec<f64>,
-    pub ly: Vec<f64>,
-
-    pub lx_clean: Vec<f64>,
-    pub ly_clean: Vec<f64>,
-
     pub slope: Option<f64>,
     pub intercept: Option<f64>,   
 }
@@ -21,12 +12,7 @@ impl Infinitesimal {
     {
         Infinitesimal {
             func: Box::new(func),
-            x: Vec::new(),
-            y: Vec::new(),
-            lx: Vec::new(),
-            ly: Vec::new(),
-            lx_clean: Vec::new(),
-            ly_clean: Vec::new(),
+
             slope: None,
             intercept: None,
         }
@@ -55,44 +41,44 @@ impl Infinitesimal {
         Ok(decreases >= (abs_vals.len().saturating_sub(1) as f64 * dec_tol) as usize)
     }
 
-    pub fn build_tables(&mut self, x_start: f64, x_end: f64, n: usize) -> Result<(), String> {
+    pub fn build_tables(&mut self, x_start: f64, x_end: f64, n: usize) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
         if !(x_start > x_end && x_end > 0.0) {
             return Err("x_start must be greater than x_end and both must be positive".into());
         }
-        self.x = geometric_sequence(x_start, x_end, n);
-        self.y = self.x.iter().map(|&x| (self.func)(x)).collect();
-        self.lx.clear();
-        self.ly.clear();
-        self.lx_clean.clear();
-        self.ly_clean.clear();
-        for (&x, &y) in self.x.iter().zip(self.y.iter()) {
+        let x = geometric_sequence(x_start, x_end, n);
+        let y: Vec<f64> = x.iter().map(|&x| (self.func)(x)).collect();
+        let mut lxs: Vec<f64> = Vec::new();
+        let mut lys: Vec<f64> = Vec::new();
+        let mut lxs_clean: Vec<f64> = Vec::new();
+        let mut lys_clean: Vec<f64> = Vec::new();
+        for (&x, &y) in x.iter().zip(y.iter()) {
             let lx = if x > 0.0 { x.log10() } else { f64::NAN };
             let ly = y.abs().log10();
-            self.lx.push(lx);
-            self.ly.push(ly);
+            lxs.push(lx);
+            lys.push(ly);
             if lx.is_finite() && ly.is_finite() {
-                self.lx_clean.push(lx);
-                self.ly_clean.push(ly);
+                lxs_clean.push(lx);
+                lys_clean.push(ly);
             }
         }
-        if self.lx_clean.len() < 2 {
+        if lxs_clean.len() < 2 {
             return Err("Not enough valid points".into());
         }
-        Ok(())
+        Ok((lxs, lys, lxs_clean, lys_clean))
     }
 
-    pub fn compute_log_log_approximation(&mut self) -> Result<(), String> {
-        if self.lx_clean.len() < 2 {
+    pub fn compute_log_log_approximation(&mut self, lxs_clean: Vec<f64>, lys_clean: Vec<f64>) -> Result<(), String> {
+        if lxs_clean.len() < 2 {
             return Err("Not enough valid points for regression".into());
         }
-        let n = self.lx_clean.len();
-        let x_mean = self.lx_clean.iter().sum::<f64>() / n as f64;
-        let y_mean = self.ly_clean.iter().sum::<f64>() / n as f64;
+        let n = lxs_clean.len();
+        let x_mean = lxs_clean.iter().sum::<f64>() / n as f64;
+        let y_mean = lys_clean.iter().sum::<f64>() / n as f64;
         let mut xy_cov = 0f64;
         let mut x_var = 0f64;
         for i in 0..n {
-            xy_cov += (self.lx_clean[i] - x_mean) * (self.ly_clean[i] - y_mean);
-            x_var += (self.lx_clean[i] - x_mean).powi(2);
+            xy_cov += (lxs_clean[i] - x_mean) * (lys_clean[i] - y_mean);
+            x_var += (lxs_clean[i] - x_mean).powi(2);
         }
         if x_var == 0.0 {
             return Err("Variance of log(x) is zero".into());
@@ -106,10 +92,10 @@ impl Infinitesimal {
 
     pub fn get_approximation_params(&mut self) -> Result<(f64, f64), String> {
         if self.slope.is_none() || self.intercept.is_none() {
-            self.compute_log_log_approximation()?;
+            return Err("Approximation parameters not computed, please run compute_log_log_approximation first".into());
         }
-        let alpha = self.slope.ok_or("slope not computed")?;
-        let c = 10f64.powf(self.intercept.ok_or("intercept not computed")?);
+        let alpha = self.slope.ok_or("slope is None")?;
+        let c = 10f64.powf(self.intercept.ok_or("intercept is None")?);
         Ok((alpha, c))
     }
 }
@@ -143,10 +129,11 @@ fn main() {
             false
         });
     println!("f(x) = 3 * x^1.5 is infinitesimal as x -> 0: {}", is_infsml);
-    inf.build_tables(x_start, x_end, n).unwrap_or_else(|e| {
+    let (_, _, lxs_clean, lys_clean) = inf.build_tables(x_start, x_end, n).unwrap_or_else(|e| {
         println!("Error building tables: {}", e);
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
     });
-    match inf.compute_log_log_approximation() {
+    match inf.compute_log_log_approximation(lxs_clean, lys_clean) {
         Ok(()) => {
             let (alpha, c) = inf.get_approximation_params().unwrap();
             println!("log-log regression: slope(alpha) = {:.6}, lg(C) = {:.6}", alpha, c.log10());
