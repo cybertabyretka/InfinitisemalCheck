@@ -18,30 +18,57 @@ impl Infinitesimal {
         }
     }
 
-    pub fn is_infinitesimal(&self, x_start: f64, x_end: f64, n: usize, tol: f64, dec_tol: f64) -> Result<bool, String> {
+    /// Check if the function behaves like a power function near zero based on the slope of the log-log regression. 
+    pub fn is_infinitesimal_log(&self) -> Result<bool, String> {
+        if self.slope.is_none() {
+            return Err("Approximation parameters not computed, please run compute_log_log_approximation first".into());
+        }
+        let alpha = self.slope.ok_or("slope is None")?;
+        Ok(alpha > 0.0)
+    }
+
+    /// Check if the function is infinitesimal as x -> 0 based on sampled values.
+    pub fn is_infinitesimal(&self, x_start: f64, x_end: f64, n: usize, tol: f64, trend_tol: f64,
+    ) -> Result<bool, String> {
         if !(x_start > x_end && x_end > 0.0) {
             return Err("x_start must be greater than x_end and both must be positive".into());
         }
         let xs = geometric_sequence(x_start, x_end, n);
         let ys: Vec<f64> = xs.iter().map(|&x| (self.func)(x)).collect();
         let abs_vals: Vec<f64> = ys.iter().map(|y| y.abs()).collect();
-        if let Some(&last_val) = abs_vals.last() {
-            if last_val > tol {
-                return Ok(false);
-            }
-        } else {
+        if abs_vals.len() < 4 {
             return Ok(false);
         }
+        // Check last 5 values are below tol
+        let tail = &abs_vals[abs_vals.len() - 5.min(abs_vals.len())..];
+        let tail_mean = tail.iter().sum::<f64>() / tail.len() as f64;
+        if tail_mean > tol {
+            return Ok(false);
+        }
+        // Check if the first half of values is significantly larger than the second half
+        let mid = abs_vals.len() / 2;
+        let first_mean =
+            abs_vals[..mid].iter().sum::<f64>() / mid as f64;
+        let second_mean =
+            abs_vals[mid..].iter().sum::<f64>() / (abs_vals.len() - mid) as f64;
+        if second_mean >= first_mean {
+            return Ok(false);
+        }
+        // Check if values are mostly decreasing
         let mut decreases = 0usize;
-        for i in 0..abs_vals.len().saturating_sub(1) {
+        for i in 0..abs_vals.len() - 1 {
             if abs_vals[i + 1] <= abs_vals[i] {
                 decreases += 1;
             }
         }
-        Ok(decreases >= (abs_vals.len().saturating_sub(1) as f64 * dec_tol) as usize)
+        let ratio = decreases as f64 / (abs_vals.len() - 1) as f64;
+        Ok(ratio >= trend_tol)
     }
 
-    pub fn build_xy_table(&self, x_start: f64, x_end: f64, n: usize) -> Result<(Vec<f64>, Vec<f64>), String> {
+    /// Build a table of x and f(x) values using a geometric sequence for x.
+    pub fn build_xy_table(
+        &self, x_start: f64, x_end: f64, n: usize
+    ) -> Result<(Vec<f64>, Vec<f64>), String> {
         if !(x_start > x_end && x_end > 0.0) {
             return Err("x_start must be greater than x_end and both must be positive".into());
         }
@@ -49,8 +76,11 @@ impl Infinitesimal {
         let y: Vec<f64> = x.iter().map(|&x| (self.func)(x)).collect();
         Ok((x, y))
     }
-
-    pub fn build_log_table(&mut self, x: &[f64], y: &[f64]) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
+    
+    /// Build log tables for x and f(x), and also return cleaned versions with only valid log values.
+    pub fn build_log_table(
+        &mut self, x: &[f64], y: &[f64]
+    ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
         let mut lxs: Vec<f64> = Vec::new();
         let mut lys: Vec<f64> = Vec::new();
         let mut lxs_clean: Vec<f64> = Vec::new();
@@ -71,7 +101,12 @@ impl Infinitesimal {
         Ok((lxs, lys, lxs_clean, lys_clean))
     }
 
-    pub fn compute_log_log_approximation(&mut self, lxs_clean: &[f64], lys_clean: &[f64]) -> Result<(), String> {
+    /// Perform linear regression on the log-log data to find the slope (alpha) and intercept (log10(C)).
+    /// Uses the formula for slope and intercept based on covariance and variance.
+    /// Stores results in the struct.
+    pub fn compute_log_log_approximation(
+        &mut self, lxs_clean: &[f64], lys_clean: &[f64]
+    ) -> Result<(), String> {
         if lxs_clean.len() < 2 {
             return Err("Not enough valid points for regression".into());
         }
@@ -94,6 +129,7 @@ impl Infinitesimal {
         Ok(())
     }
 
+    /// Get the approximation parameters alpha and C from the computed slope and intercept.
     pub fn get_approximation_params(&mut self) -> Result<(f64, f64), String> {
         if self.slope.is_none() || self.intercept.is_none() {
             return Err("Approximation parameters not computed, please run compute_log_log_approximation first".into());
@@ -105,6 +141,7 @@ impl Infinitesimal {
 }
 
 
+/// Generate a geometric sequence of n values from a to b (inclusive).
 fn geometric_sequence(a: f64, b: f64, n: usize) -> Vec<f64> {
     if n == 0 {
         return Vec::new();
@@ -137,9 +174,11 @@ fn main() -> Result<(), String> {
     match inf.compute_log_log_approximation(&lxs_clean, &lys_clean) {
         Ok(()) => {
             let (alpha, c) = inf.get_approximation_params().unwrap();
-            println!("log-log regression: slope(alpha) = {:.6}, lg(C) = {:.6}", alpha, c.log10());
-            println!("estimated: alpha = {:.6}, C = {:.6}", alpha, c);
+            println!("log-log regression: slope(alpha) = {:.2}, lg(C) = {:.2}", alpha, c.log10());
+            println!("estimated: alpha = {:.2}, C = {:.2}", alpha, c);
+            println!("approximation: lg(f(x)) ~ lg({:.2}) + {:.2}*lg(x)", c, alpha);
             println!("expected: alpha=1.5, C=3");
+            println!("is_infinitesimal_log: {}", inf.is_infinitesimal_log().unwrap());
         }
         Err(e) => println!("Regression error: {}", e),
     }
