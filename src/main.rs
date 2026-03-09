@@ -112,16 +112,12 @@ fn geometric_sequence(a: f64, b: f64, n: usize) -> Vec<f64> {
     if n == 1 {
         return vec![a];
     }
-    let mut sequence = Vec::with_capacity(n);
     let ratio = (b / a).powf(1.0 / (n - 1) as f64);
-    for i in 0..n {
-        sequence.push(a * ratio.powf(i as f64));
-    }
-    sequence
+    (0..n).map(|i| a * ratio.powf(i as f64)).collect()
 }
 
 
-fn main() {
+fn main() -> Result<(), String> {
     let x_start = 1e-1;
     let x_end = 1e-10;
     let n = 100usize;
@@ -130,21 +126,12 @@ fn main() {
 
     // Init and test
     let mut inf = Infinitesimal::new(|x| 3.0 * x.powf(1.5));
-    let is_infsml = inf.is_infinitesimal(x_start, x_end, n, tol, dec_tol).unwrap_or_else(|e| {
-            println!("Error checking infinitesimal: {}", e);
-            false
-        });
+    let is_infsml = inf.is_infinitesimal(x_start, x_end, n, tol, dec_tol)?;
     println!("f(x) = 3 * x^1.5 is infinitesimal as x -> 0: {}", is_infsml);
 
     // Build table and compute log table
-    let (x, y) = inf.build_xy_table(x_start, x_end, n).unwrap_or_else(|e| {
-        println!("Error building xy table: {}", e);
-        (Vec::new(), Vec::new())
-    });
-    let (_, _, lxs_clean, lys_clean) = inf.build_log_table(&x, &y).unwrap_or_else(|e| {
-        println!("Error building log tables: {}", e);
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-    });
+    let (x, y) = inf.build_xy_table(x_start, x_end, n)?;
+    let (_, _, lxs_clean, lys_clean) = inf.build_log_table(&x, &y)?;
 
     // Compute regression and print results
     match inf.compute_log_log_approximation(&lxs_clean, &lys_clean) {
@@ -156,4 +143,5 @@ fn main() {
         }
         Err(e) => println!("Regression error: {}", e),
     }
+    Ok(())
 }
