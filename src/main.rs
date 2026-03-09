@@ -18,7 +18,7 @@ impl Infinitesimal {
         }
     }
 
-    /// Check if the function behaves like a power function near zero based on the slope of the log-log regression. 
+    /// Check if the logarithmized function behaves like a power function near zero based on the slope of the log-log regression. 
     pub fn is_infinitesimal_log(&self) -> Result<bool, String> {
         if self.slope.is_none() {
             return Err("Approximation parameters not computed, please run compute_log_log_approximation first".into());
@@ -104,7 +104,7 @@ impl Infinitesimal {
     /// Perform linear regression on the log-log data to find the slope (alpha) and intercept (log10(C)).
     /// Uses the formula for slope and intercept based on covariance and variance.
     /// Stores results in the struct.
-    pub fn compute_log_log_approximation(
+    pub fn compute_log_log_lin_reg(
         &mut self, lxs_clean: &[f64], lys_clean: &[f64]
     ) -> Result<(), String> {
         if lxs_clean.len() < 2 {
@@ -130,7 +130,7 @@ impl Infinitesimal {
     }
 
     /// Get the approximation parameters alpha and C from the computed slope and intercept.
-    pub fn get_approximation_params(&mut self) -> Result<(f64, f64), String> {
+    pub fn get_log_lin_reg_params(&mut self) -> Result<(f64, f64), String> {
         if self.slope.is_none() || self.intercept.is_none() {
             return Err("Approximation parameters not computed, please run compute_log_log_approximation first".into());
         }
@@ -171,9 +171,9 @@ fn main() -> Result<(), String> {
     let (_, _, lxs_clean, lys_clean) = inf.build_log_table(&x, &y)?;
 
     // Compute regression and print results
-    match inf.compute_log_log_approximation(&lxs_clean, &lys_clean) {
+    match inf.compute_log_log_lin_reg(&lxs_clean, &lys_clean) {
         Ok(()) => {
-            let (alpha, c) = inf.get_approximation_params().unwrap();
+            let (alpha, c) = inf.get_log_lin_reg_params().unwrap();
             println!("log-log regression: slope(alpha) = {:.2}, lg(C) = {:.2}", alpha, c.log10());
             println!("estimated: alpha = {:.2}, C = {:.2}", alpha, c);
             println!("approximation: lg(f(x)) = lg({:.2}) + {:.2}*lg(x)", c, alpha);
