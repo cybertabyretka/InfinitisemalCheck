@@ -41,12 +41,16 @@ impl Infinitesimal {
         Ok(decreases >= (abs_vals.len().saturating_sub(1) as f64 * dec_tol) as usize)
     }
 
-    pub fn build_tables(&mut self, x_start: f64, x_end: f64, n: usize) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
+    pub fn build_xy_table(&self, x_start: f64, x_end: f64, n: usize) -> Result<(Vec<f64>, Vec<f64>), String> {
         if !(x_start > x_end && x_end > 0.0) {
             return Err("x_start must be greater than x_end and both must be positive".into());
         }
         let x = geometric_sequence(x_start, x_end, n);
         let y: Vec<f64> = x.iter().map(|&x| (self.func)(x)).collect();
+        Ok((x, y))
+    }
+
+    pub fn build_log_table(&mut self, x: &[f64], y: &[f64]) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
         let mut lxs: Vec<f64> = Vec::new();
         let mut lys: Vec<f64> = Vec::new();
         let mut lxs_clean: Vec<f64> = Vec::new();
@@ -67,7 +71,7 @@ impl Infinitesimal {
         Ok((lxs, lys, lxs_clean, lys_clean))
     }
 
-    pub fn compute_log_log_approximation(&mut self, lxs_clean: Vec<f64>, lys_clean: Vec<f64>) -> Result<(), String> {
+    pub fn compute_log_log_approximation(&mut self, lxs_clean: &[f64], lys_clean: &[f64]) -> Result<(), String> {
         if lxs_clean.len() < 2 {
             return Err("Not enough valid points for regression".into());
         }
@@ -123,17 +127,27 @@ fn main() {
     let n = 100usize;
     let tol = 1e-6;
     let dec_tol = 0.8;
+
+    // Init and test
     let mut inf = Infinitesimal::new(|x| 3.0 * x.powf(1.5));
     let is_infsml = inf.is_infinitesimal(x_start, x_end, n, tol, dec_tol).unwrap_or_else(|e| {
             println!("Error checking infinitesimal: {}", e);
             false
         });
     println!("f(x) = 3 * x^1.5 is infinitesimal as x -> 0: {}", is_infsml);
-    let (_, _, lxs_clean, lys_clean) = inf.build_tables(x_start, x_end, n).unwrap_or_else(|e| {
-        println!("Error building tables: {}", e);
+
+    // Build table and compute log table
+    let (x, y) = inf.build_xy_table(x_start, x_end, n).unwrap_or_else(|e| {
+        println!("Error building xy table: {}", e);
+        (Vec::new(), Vec::new())
+    });
+    let (_, _, lxs_clean, lys_clean) = inf.build_log_table(&x, &y).unwrap_or_else(|e| {
+        println!("Error building log tables: {}", e);
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())
     });
-    match inf.compute_log_log_approximation(lxs_clean, lys_clean) {
+
+    // Compute regression and print results
+    match inf.compute_log_log_approximation(&lxs_clean, &lys_clean) {
         Ok(()) => {
             let (alpha, c) = inf.get_approximation_params().unwrap();
             println!("log-log regression: slope(alpha) = {:.6}, lg(C) = {:.6}", alpha, c.log10());
